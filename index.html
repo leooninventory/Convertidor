@@ -5,72 +5,159 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>FixFile — Arregla archivos rotos</title>
   <style>
-    body{font-family:sans-serif;max-width:700px;margin:40px auto;padding:20px;text-align:center;background:#f9fafb;color:#1f2937}
-    h1{color:#4f46e5}
-    .drop{border:2px dashed #d1d6e0;border-radius:12px;padding:40px;margin:20px 0;background:#f1f5f9;cursor:pointer}
-    button{background:#4f46e5;color:white;border:none;padding:12px 24px;font-size:16px;border-radius:8px;cursor:pointer;margin:10px 0}
-    button:disabled{background:#9ca3af;cursor:not-allowed}
-    #status{margin:20px 0;font-weight:bold}
-    #download{display:none;margin:20px 0;padding:12px 24px;background:#10b981;color:white;text-decoration:none;border-radius:8px}
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 700px;
+      margin: 40px auto;
+      padding: 20px;
+      text-align: center;
+      background: #f9fafb;
+      color: #1f2937;
+    }
+    h1 { color: #4f46e5; }
+    .drop {
+      border: 2px dashed #d1d6e0;
+      border-radius: 12px;
+      padding: 40px;
+      margin: 20px 0;
+      background: #f1f5f9;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    .drop:hover { background: #e5e7eb; }
+    button {
+      background: #4f46e5;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      font-size: 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    button:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+    #status {
+      margin: 20px 0;
+      font-weight: bold;
+      min-height: 24px;
+    }
+    #download {
+      display: none;
+      margin-top: 20px;
+      padding: 12px 24px;
+      background: #10b981;
+      color: white;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
   <h1>📁 FixFile</h1>
-  <p>Arrastra un archivo con nombre raro (.724Z, .tmp, etc.) y lo convertiremos a MP4.</p>
-  
-  <div class="drop" id="drop">📂 Arrastra tu archivo aquí o haz clic</div>
-  <input type="file" id="file" accept="*/*" style="display:none">
-  <button id="btn" disabled>Convertir a MP4</button>
-  <div id="status"></div>
-  <a id="dl" download>⬇️ Descargar MP4</a>
+  <p>Arrastra o selecciona un archivo con nombre raro (.724Z, .tmp, etc.).<br>Lo convertiremos a MP4.</p>
 
-  <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/ffmpeg.min.js"></script>
+  <div class="drop" id="drop">📂 Arrastra tu archivo aquí<br>o haz clic para buscar</div>
+  <input type="file" id="fileInput" accept="*/*" style="display:none" />
+
+  <button id="convertBtn" disabled>Convertir a MP4</button>
+  <div id="status"></div>
+  <a id="download" download>⬇️ Descargar MP4</a>
+
   <script>
-    const {createFFmpeg, fetchFile} = FFmpeg;
-    const ffmpeg = createFFmpeg({log:false});
-    let file = null;
+    // Cargamos FFmpeg.wasm desde CDN
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/ffmpeg.min.js';
+    script.onload = () => {
+      console.log('FFmpeg cargado');
+    };
+    document.head.appendChild(script);
+
+    let selectedFile = null;
 
     const drop = document.getElementById('drop');
-    const fileInput = document.getElementById('file');
-    const btn = document.getElementById('btn');
-    const status = document.getElementById('status');
-    const dl = document.getElementById('dl');
+    const fileInput = document.getElementById('fileInput');
+    const convertBtn = document.getElementById('convertBtn');
+    const statusDiv = document.getElementById('status');
+    const downloadLink = document.getElementById('download');
 
-    drop.onclick = () => fileInput.click();
-    fileInput.onchange = e => { if(e.target.files[0]) loadFile(e.target.files[0]); };
+    drop.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length) handleFile(e.target.files[0]);
+    });
 
-    ['dragover','dragenter'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.style.background='#e5e7eb'; }));
-    ['dragleave','dragend'].forEach(e => drop.addEventListener(e, () => drop.style.background='#f1f5f9'));
-    drop.addEventListener('drop', ev => { ev.preventDefault(); drop.style.background='#f1f5f9'; if(ev.dataTransfer.files[0]) loadFile(ev.dataTransfer.files[0]); });
+    drop.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      drop.style.background = '#e5e7eb';
+    });
+    drop.addEventListener('dragleave', () => {
+      drop.style.background = '#f1f5f9';
+    });
+    drop.addEventListener('drop', (e) => {
+      e.preventDefault();
+      drop.style.background = '#f1f5f9';
+      if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+    });
 
-    function loadFile(f) {
-      file = f;
-      btn.disabled = false;
-      status.textContent = `Archivo: ${f.name} (${(f.size/1024/1024).toFixed(1)} MB)`;
-      dl.style.display = 'none';
+    function handleFile(file) {
+      selectedFile = file;
+      convertBtn.disabled = false;
+      statusDiv.textContent = `Archivo: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
+      downloadLink.style.display = 'none';
     }
 
-    btn.onclick = async () => {
-      btn.disabled = true;
-      status.textContent = 'Cargando conversor...';
+    convertBtn.addEventListener('click', async () => {
+      if (!selectedFile) return;
 
-      if (!ffmpeg.isLoaded()) await ffmpeg.load();
+      convertBtn.disabled = true;
+      statusDiv.textContent = 'Cargando conversor...';
 
-      status.textContent = 'Convirtiendo... ⏳';
       try {
-        ffmpeg.FS('writeFile', 'input', await fetchFile(file));
-        await ffmpeg.run('-i','input','-c:v','libx264','-c:a','aac','-y','output.mp4');
+        // Esperar a que FFmpeg esté listo
+        await new Promise(resolve => {
+          const check = () => {
+            if (typeof FFmpeg !== 'undefined' && FFmpeg.createFFmpeg) {
+              resolve();
+            } else {
+              setTimeout(check, 100);
+            }
+          };
+          check();
+        });
+
+        const ffmpeg = FFmpeg.createFFmpeg({
+          log: false,
+          progress: ({ ratio }) => {
+            statusDiv.textContent = `Convirtiendo... ${(ratio * 100).toFixed(0)}%`;
+          },
+        });
+
+        statusDiv.textContent = 'Iniciando FFmpeg...';
+        await ffmpeg.load();
+
+        statusDiv.textContent = 'Analizando y convirtiendo... ⏳';
+
+        ffmpeg.FS('writeFile', 'input', await fetch(selectedFile.arrayBuffer()));
+        await ffmpeg.run('-i', 'input', '-c:v', 'libx264', '-c:a', 'aac', '-y', 'output.mp4');
+
         const data = ffmpeg.FS('readFile', 'output.mp4');
-        const blob = new Blob([data.buffer], {type:'video/mp4'});
-        dl.href = URL.createObjectURL(blob);
-        dl.download = file.name.replace(/\.[^/.]+$/, '') + '.mp4';
-        dl.style.display = 'inline-block';
-        status.textContent = '✅ ¡Listo! Descarga tu MP4.';
-      } catch(e) {
-        status.textContent = '❌ Error. ¿Es un video válido?';
-        btn.disabled = false;
+        const blob = new Blob([data.buffer], { type: 'video/mp4' });
+        const url = URL.createObjectURL(blob);
+
+        const baseName = selectedFile.name.replace(/\.[^/.]+$/, "");
+        downloadLink.href = url;
+        downloadLink.download = `${baseName}.mp4`;
+        downloadLink.style.display = 'inline-block';
+        statusDiv.textContent = '✅ ¡Listo! Descarga tu MP4.';
+      } catch (err) {
+        console.error(err);
+        statusDiv.textContent = '❌ Error al convertir. ¿Es un video válido?';
+        convertBtn.disabled = false;
       }
-    };
+    });
   </script>
 </body>
 </html>
