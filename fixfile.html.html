@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FixFile — Arregla archivos rotos</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 700px;
+      margin: 30px auto;
+      padding: 20px;
+      text-align: center;
+      background: #f8fafc;
+      color: #1e293b;
+    }
+    h1 {
+      color: #4f46e5;
+      margin-bottom: 10px;
+    }
+    .dropzone {
+      border: 2px dashed #cbd5e1;
+      border-radius: 12px;
+      padding: 40px 20px;
+      margin: 20px 0;
+      background: #f1f5f9;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    .dropzone:hover {
+      background: #e2e8f0;
+    }
+    button {
+      background: #4f46e5;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      font-size: 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    button:disabled {
+      background: #94a3b8;
+      cursor: not-allowed;
+    }
+    #status {
+      margin: 20px 0;
+      font-weight: bold;
+      min-height: 24px;
+    }
+    #download {
+      display: none;
+      margin-top: 20px;
+      padding: 12px 24px;
+      background: #10b981;
+      color: white;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>📁 FixFile</h1>
+  <p>Arrastra o selecciona un archivo con nombre raro (.724Z, .tmp, etc.).<br>Lo convertiremos a un formato que todos entiendan.</p>
+  
+  <div class="dropzone" id="dropZone">
+    <p>📂 Arrastra tu archivo aquí<br>o haz clic para buscar</p>
+    <input type="file" id="fileInput" accept="*/*" style="display:none" />
+  </div>
+
+  <button id="convertBtn" disabled>Convertir a MP4</button>
+  <div id="status"></div>
+  <a id="download" download>⬇️ Descargar archivo arreglado</a>
+
+  <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/ffmpeg.min.js"></script>
+  <script>
+    const { createFFmpeg, fetchFile } = FFmpeg;
+    const ffmpeg = createFFmpeg({ log: false });
+    let selectedFile = null;
+
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const convertBtn = document.getElementById('convertBtn');
+    const statusDiv = document.getElementById('status');
+    const downloadLink = document.getElementById('download');
+
+    // Abrir selector al hacer clic en dropzone
+    dropZone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length) handleFile(e.target.files[0]);
+    });
+
+    // Soporte para arrastrar y soltar
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.style.background = '#d1d5db';
+    });
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.style.background = '#f1f5f9';
+    });
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.style.background = '#f1f5f9';
+      if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+    });
+
+    function handleFile(file) {
+      selectedFile = file;
+      convertBtn.disabled = false;
+      statusDiv.textContent = `Archivo: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
+      downloadLink.style.display = 'none';
+    }
+
+    convertBtn.addEventListener('click', async () => {
+      if (!selectedFile) return;
+      
+      convertBtn.disabled = true;
+      statusDiv.textContent = 'Cargando conversor... (1 vez por sesión)';
+
+      if (!ffmpeg.isLoaded()) await ffmpeg.load();
+
+      statusDiv.textContent = 'Analizando y convirtiendo... ⏳';
+
+      try {
+        ffmpeg.FS('writeFile', 'input', await fetchFile(selectedFile));
+        await ffmpeg.run('-i', 'input', '-c:v', 'libx264', '-c:a', 'aac', '-y', 'output.mp4');
+
+        const data = ffmpeg.FS('readFile', 'output.mp4');
+        const blob = new Blob([data.buffer], { type: 'video/mp4' });
+        const url = URL.createObjectURL(blob);
+
+        const baseName = selectedFile.name.replace(/\.[^/.]+$/, "");
+        downloadLink.href = url;
+        downloadLink.download = `${baseName}.mp4`;
+        downloadLink.style.display = 'inline-block';
+        statusDiv.textContent = '✅ ¡Listo! Descarga tu archivo en MP4.';
+      } catch (err) {
+        console.error(err);
+        statusDiv.textContent = '❌ No se pudo convertir. ¿Es un video válido?';
+        convertBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
